@@ -1,0 +1,20 @@
+# 依赖
+node_modules/
+
+# 数据库文件
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# 环境变量（如含密钥则必须忽略；此项目仅供演示，如需保留可注释掉）
+.env
+
+# 日志
+*.log
+npm-debug.log*
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store

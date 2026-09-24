@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>帖子详情</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #f0f2f5; color: #1f2937; padding: 24px; }
+  .container { max-width: 860px; margin: 0 auto; }
+  .back { display: inline-block; margin-bottom: 16px; color: #3b82f6;
+          text-decoration: none; font-size: 14px; }
+  .back:hover { text-decoration: underline; }
+  .card { background: #fff; border-radius: 12px; padding: 24px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.04); margin-bottom: 16px; }
+  h1 { font-size: 24px; margin-bottom: 12px; line-height: 1.4; }
+  .meta { display: flex; gap: 18px; font-size: 13px; color: #9ca3af;
+          padding-bottom: 16px; border-bottom: 1px solid #f3f4f6; margin-bottom: 16px; }
+  .content { font-size: 15px; line-height: 1.8; color: #374151; white-space: pre-wrap; }
+  .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer;
+         font-size: 14px; font-weight: 500; }
+  .btn-primary { background: #3b82f6; color: #fff; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-danger { background: #ef4444; color: #fff; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn-ghost { background: #fff; color: #1f2937; border: 1px solid #e5e7eb; }
+  .btn-ghost:hover { background: #f3f4f6; }
+
+  h2 { font-size: 16px; margin-bottom: 14px; color: #374151; }
+  .comment-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+  .comment-form input, .comment-form textarea {
+    padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px;
+    font-size: 14px; outline: none; font-family: inherit; resize: vertical;
+  }
+  .comment-form input:focus, .comment-form textarea:focus { border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+  .comment-form textarea { min-height: 80px; }
+  .comment-form .row { display: flex; gap: 10px; }
+  .comment-form .row input { flex: 1; }
+  .comment-form .row button { white-space: nowrap; }
+
+  .comment { padding: 14px 0; border-bottom: 1px solid #f3f4f6; }
+  .comment:last-child { border-bottom: none; }
+  .comment-head { display: flex; justify-content: space-between;
+                  font-size: 13px; color: #6b7280; margin-bottom: 6px; }
+  .comment-body { font-size: 14px; line-height: 1.6; color: #374151; white-space: pre-wrap; }
+  .comment-author { color: #3b82f6; font-weight: 500; }
+  .no-comment { text-align: center; color: #9ca3af; padding: 32px 0; font-size: 14px; }
+
+  #toast { position: fixed; bottom: 24px; left: 50%;
+           transform: translateX(-50%) translateY(80px);
+           background: #111827; color: #fff; padding: 10px 20px; border-radius: 8px;
+           font-size: 14px; opacity: 0; transition: .3s; pointer-events: none; z-index: 20; }
+  #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  #toast.err { background: #ef4444; }
+</style>
+</head>
+<body>
+<div class="container">
+  <a href="/" class="back">← 返回列表</a>
+  <div id="post"></div>
+  <div class="card">
+    <h2>评论 <span id="commentCount"></span></h2>
+    <div class="comment-form">
+      <div class="row">
+        <input id="c-author" type="text" placeholder="昵称（可留空）" maxlength="30" />
+        <button class="btn btn-primary" onclick="submitComment()">发表评论</button>
+      </div>
+      <textarea id="c-content" placeholder="说点什么…"></textarea>
+    </div>
+    <div id="commentList"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const postId = new URLSearchParams(location.search).get('id');
+
+async function request(url, opts = {}) {
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+  return data;
+}
+
+function toast(msg, isErr = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = isErr ? 'show err' : 'show';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => (el.className = ''), 2400);
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function load() {
+  if (!postId) {
+    document.getElementById('post').innerHTML = '<div class="card">无效的帖子 ID</div>';
+    return;
+  }
+  try {
+    const p = await request(`/api/posts/${postId}`);
+    document.getElementById('post').innerHTML = `
+      <div class="card">
+        <h1>${escapeHtml(p.title)}</h1>
+        <div class="meta">
+          <span>👤 ${escapeHtml(p.author_name)}</span>
+          <span>🕒 ${p.created_at}</span>
+          <span>👁 ${p.views}</span>
+        </div>
+        <div class="content">${escapeHtml(p.content)}</div>
+      </div>
+    `;
+    renderComments(p.comments);
+  } catch (e) {
+    document.getElementById('post').innerHTML =
+      `<div class="card">加载失败：${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderComments(comments) {
+  document.getElementById('commentCount').textContent = `(${comments.length})`;
+  const box = document.getElementById('commentList');
+  if (!comments.length) {
+    box.innerHTML = '<div class="no-comment">还没有评论，来抢沙发 🛋️</div>';
+    return;
+  }
+  box.innerHTML = comments.map(c => `
+    <div class="comment">
+      <div class="comment-head">
+        <span><span class="comment-author">${escapeHtml(c.author_name)}</span> · ${c.created_at}</span>
+        <button class="btn btn-ghost btn-sm" onclick="deleteComment(${c.id})">删除</button>
+      </div>
+      <div class="comment-body">${escapeHtml(c.content)}</div>
+    </div>
+  `).join('');
+}
+
+async function submitComment() {
+  const payload = { content: document.getElementById('c-content').value.trim() };
+  const author = document.getElementById('c-author').value.trim();
+  if (author) payload.author_name = author;
+
+  if (!payload.content) return toast('评论内容不能为空', true);
+
+  try {
+    await request(`/api/posts/${postId}/comments`, {
+      method: 'POST', body: JSON.stringify(payload),
+    });
+    toast('评论成功');
+    document.getElementById('c-content').value = '';
+    load();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function deleteComment(id) {
+  if (!confirm('确定删除这条评论吗？')) return;
+  try {
+    await request(`/api/comments/${id}`, { method: 'DELETE' });
+    toast('已删除');
+    load();
+  } catch (e) { toast(e.message, true); }
+}
+
+load();
+</script>
+</body>
+</html>
