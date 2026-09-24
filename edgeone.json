@@ -1,0 +1,8 @@
+{
+  "buildCommand": "npm install",
+  "outputDirectory": ".",
+  "cloudFunctions": {
+    "runtime": "nodejs18.x",
+    "handler": "cloud-functions/index.js"
+  }
+}
