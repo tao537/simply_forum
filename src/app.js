@@ -1,5 +1,4 @@
 import express from 'express';
-import devRoutes from './routes/dev.js';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -26,7 +25,6 @@ app.use('/api/users', userRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/dev', devRoutes);
 
 // === 页面便捷访问重定向 ===
 app.get('/login', (req, res) => res.redirect('/login.html'));
