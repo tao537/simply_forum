@@ -3,9 +3,9 @@ import { commentService } from '../services/commentService.js';
 import { notificationService, extractMentions } from '../services/notificationService.js';
 
 export const commentController = {
-  create(req, res) {
+  async create(req, res) {
     const postId = Number(req.params.id);
-    const comment = commentService.create(postId, {
+    const comment = await commentService.create(postId, {
       content: req.body.content,
       author_id: req.user?.id,
       author_name: req.user?.nickname || req.user?.username || req.body.author_name,
@@ -13,11 +13,12 @@ export const commentController = {
     if (!comment) return res.status(404).json({ message: '帖子不存在' });
 
     const me = req.user?.nickname || req.user?.username || '匿名';
-    const post = db.prepare('SELECT author_id, title FROM posts WHERE id = ?').get(postId);
+    const [postRows] = await db.query('SELECT author_id, title FROM posts WHERE id = ?', [postId]);
+    const post = postRows[0];
 
     // 回复通知：评论者不是楼主时通知楼主
     if (post.author_id && post.author_id !== req.user?.id) {
-      notificationService.create({
+      await notificationService.create({
         userId: post.author_id,
         type: 'reply',
         fromUserId: req.user?.id,
@@ -28,8 +29,8 @@ export const commentController = {
       });
     }
     // @提及通知
-    for (const u of extractMentions(req.body.content)) {
-      notificationService.create({
+    for (const u of await extractMentions(req.body.content)) {
+      await notificationService.create({
         userId: u.id,
         type: 'mention',
         fromUserId: req.user?.id,
@@ -43,12 +44,13 @@ export const commentController = {
     res.status(201).json(comment);
   },
 
-  toggleLike(req, res) {
-    const result = commentService.toggleLike(Number(req.params.id), req.user.id);
+  async toggleLike(req, res) {
+    const result = await commentService.toggleLike(Number(req.params.id), req.user.id);
     if (!result) return res.status(404).json({ message: '评论不存在' });
-    const comment = db.prepare('SELECT upvotes, author_id, post_id FROM comments WHERE id = ?').get(Number(req.params.id));
+    const [commentRows] = await db.query('SELECT upvotes, author_id, post_id FROM comments WHERE id = ?', [Number(req.params.id)]);
+    const comment = commentRows[0];
     if (result.liked && comment.author_id && comment.author_id !== req.user.id) {
-      notificationService.create({
+      await notificationService.create({
         userId: comment.author_id,
         type: 'like',
         fromUserId: req.user.id,
@@ -61,8 +63,8 @@ export const commentController = {
     res.json({ ...result, upvotes: comment.upvotes });
   },
 
-  remove(req, res) {
-    const result = commentService.remove(Number(req.params.id), req.user?.id, req.user?.role === 'admin');
+  async remove(req, res) {
+    const result = await commentService.remove(Number(req.params.id), req.user?.id, req.user?.role === 'admin');
     if (result.status === 404) return res.status(404).json({ message: '评论不存在' });
     if (result.status === 403) return res.status(403).json({ message: '无权删除他人的评论' });
     res.status(204).end();

@@ -1,41 +1,47 @@
 import db from '../db/index.js';
 
 export const commentService = {
-  create(postId, { content, author_id, author_name }) {
-    const post = db.prepare('SELECT id FROM posts WHERE id = ?').get(postId);
+  async create(postId, { content, author_id, author_name }) {
+    const [postRows] = await db.query('SELECT id FROM posts WHERE id = ?', [postId]);
+    const post = postRows[0];
     if (!post) return null;
 
-    const info = db.prepare(`
+    const [r] = await db.query(`
       INSERT INTO comments (post_id, content, author_id, author_name)
       VALUES (?, ?, ?, ?)
-    `).run(postId, content, author_id || null, author_name || '匿名');
+    `, [postId, content, author_id || null, author_name || '匿名']);
 
-    return db.prepare('SELECT * FROM comments WHERE id = ?').get(info.lastInsertRowid);
+    const [rows] = await db.query('SELECT * FROM comments WHERE id = ?', [r.insertId]);
+    return rows[0];
   },
 
-  remove(id, userId, isAdmin) {
-    const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(id);
+  async remove(id, userId, isAdmin) {
+    const [commentRows] = await db.query('SELECT * FROM comments WHERE id = ?', [id]);
+    const comment = commentRows[0];
     if (!comment) return { status: 404 };
     if (!isAdmin && comment.author_id && comment.author_id !== userId) {
       return { status: 403 };
     }
-    db.prepare('DELETE FROM comments WHERE id = ?').run(id);
+    await db.query('DELETE FROM comments WHERE id = ?', [id]);
     return { status: 200 };
   },
 
-  toggleLike(id, userId) {
-    const comment = db.prepare('SELECT id FROM comments WHERE id = ?').get(id);
+  async toggleLike(id, userId) {
+    const [commentRows] = await db.query('SELECT id FROM comments WHERE id = ?', [id]);
+    const comment = commentRows[0];
     if (!comment) return null;
-    const existing = db.prepare(
-      'SELECT 1 FROM comment_likes WHERE comment_id = ? AND user_id = ?'
-    ).get(id, userId);
+    const [existingRows] = await db.query(
+      'SELECT 1 AS found FROM comment_likes WHERE comment_id = ? AND user_id = ?',
+      [id, userId]
+    );
+    const existing = existingRows[0];
     if (existing) {
-      db.prepare('DELETE FROM comment_likes WHERE comment_id = ? AND user_id = ?').run(id, userId);
-      db.prepare('UPDATE comments SET upvotes = upvotes - 1 WHERE id = ?').run(id);
+      await db.query('DELETE FROM comment_likes WHERE comment_id = ? AND user_id = ?', [id, userId]);
+      await db.query('UPDATE comments SET upvotes = upvotes - 1 WHERE id = ?', [id]);
       return { liked: false };
     } else {
-      db.prepare('INSERT INTO comment_likes (comment_id, user_id) VALUES (?, ?)').run(id, userId);
-      db.prepare('UPDATE comments SET upvotes = upvotes + 1 WHERE id = ?').run(id);
+      await db.query('INSERT INTO comment_likes (comment_id, user_id) VALUES (?, ?)', [id, userId]);
+      await db.query('UPDATE comments SET upvotes = upvotes + 1 WHERE id = ?', [id]);
       return { liked: true };
     }
   },

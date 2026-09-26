@@ -4,8 +4,9 @@ import db from '../db/index.js';
 const SALT_ROUNDS = 10;
 
 export const userService = {
-  findByUsername(username) {
-    return db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  async findByUsername(username) {
+    const [rows] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
+    return rows[0];
   },
 
   publicUser(user) {
@@ -19,35 +20,46 @@ export const userService = {
     };
   },
 
-  register({ username, password, nickname }) {
+  async register({ username, password, nickname }) {
     const hash = bcrypt.hashSync(password, SALT_ROUNDS);
     // 第一个注册的用户自动成为管理员
-    const isFirst = db.prepare('SELECT COUNT(*) c FROM users').get().c === 0;
+    const [cntRows] = await db.query('SELECT COUNT(*) AS c FROM users');
+    const isFirst = Number(cntRows[0].c) === 0;
     const role = isFirst ? 'admin' : 'user';
-    const info = db.prepare(
-      'INSERT INTO users (username, password_hash, nickname, role) VALUES (?, ?, ?, ?)'
-    ).run(username, hash, nickname || username, role);
-    return db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+    const [r] = await db.query(
+      'INSERT INTO users (username, password_hash, nickname, role) VALUES (?, ?, ?, ?)',
+      [username, hash, nickname || username, role]
+    );
+    const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [r.insertId]);
+    return rows[0];
   },
 
   verifyPassword(user, password) {
     return bcrypt.compareSync(password, user.password_hash);
   },
 
-  deleteUser(id) {
-    db.prepare('DELETE FROM comments WHERE author_id = ?').run(id);
-    db.prepare('DELETE FROM posts WHERE author_id = ?').run(id);
-    return db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  async deleteUser(id) {
+    await db.query('DELETE FROM comments WHERE author_id = ?', [id]);
+    await db.query('DELETE FROM posts WHERE author_id = ?', [id]);
+    const [r] = await db.query('DELETE FROM users WHERE id = ?', [id]);
+    return r; // r.affectedRows
   },
 
-  deleteUsersBatch(ids) {
-    const transaction = db.transaction(() => {
+  async deleteUsersBatch(ids) {
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
       for (const id of ids) {
-        db.prepare('DELETE FROM comments WHERE author_id = ?').run(id);
-        db.prepare('DELETE FROM posts WHERE author_id = ?').run(id);
-        db.prepare('DELETE FROM users WHERE id = ?').run(id);
+        await conn.query('DELETE FROM comments WHERE author_id = ?', [id]);
+        await conn.query('DELETE FROM posts WHERE author_id = ?', [id]);
+        await conn.query('DELETE FROM users WHERE id = ?', [id]);
       }
-    });
-    return transaction();
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
   },
 };

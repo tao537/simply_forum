@@ -7,7 +7,7 @@ export function signToken(user) {
   return jwt.sign({ id: user.id, username: user.username }, SECRET, { expiresIn: '7d' });
 }
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
 
@@ -17,9 +17,11 @@ export function requireAuth(req, res, next) {
 
   try {
     const payload = jwt.verify(token, SECRET);
-    const user = db.prepare(
-      'SELECT id, username, nickname, avatar, role, created_at FROM users WHERE id = ?'
-    ).get(payload.id);
+    const [rows] = await db.query(
+      'SELECT id, username, nickname, avatar, role, created_at FROM users WHERE id = ?',
+      [payload.id]
+    );
+    const user = rows[0];
     if (!user) return res.status(401).json({ message: '登录状态无效' });
     req.user = user;
     next();
@@ -38,15 +40,17 @@ export function requireAdmin(req, res, next) {
   next();
 }
 
-export function optionalAuth(req, res, next) {
+export async function optionalAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
   if (token) {
     try {
       const payload = jwt.verify(token, SECRET);
-      const user = db.prepare(
-        'SELECT id, username, nickname, avatar, role, created_at FROM users WHERE id = ?'
-      ).get(payload.id);
+      const [rows] = await db.query(
+        'SELECT id, username, nickname, avatar, role, created_at FROM users WHERE id = ?',
+        [payload.id]
+      );
+      const user = rows[0];
       if (user) req.user = user;
     } catch { /* 忽略无效 token */ }
   }
