@@ -10,7 +10,7 @@ const createStatements = [
     username      VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     nickname      VARCHAR(255) NOT NULL DEFAULT '',
-    avatar        TEXT NOT NULL DEFAULT '',
+    avatar VARCHAR(512) NOT NULL DEFAULT '',
     role          VARCHAR(50) NOT NULL DEFAULT 'user',
     created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
@@ -68,17 +68,12 @@ const createStatements = [
     from_name    VARCHAR(255) NOT NULL DEFAULT '',
     post_id      INT NULL,
     comment_id   INT NULL,
-    content      TEXT NOT NULL DEFAULT '',
+    content      VARCHAR(500) NOT NULL DEFAULT '',
     is_read      INT NOT NULL DEFAULT 0,
     created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
-  `CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC)`,
-  `CREATE INDEX IF NOT EXISTS idx_posts_upvotes ON posts(upvotes DESC)`,
-  `CREATE INDEX IF NOT EXISTS idx_posts_pinned  ON posts(pinned DESC)`,
-  `CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_notify_user   ON notifications(user_id, is_read)`,
 ];
 
 // ========== 第 2 步：补列（只对"老库"生效；新库全部跳过）==========
@@ -96,7 +91,7 @@ async function addColumnIfMissing(table, column, ddl) {
 
 const patchColumns = [
   ['users', 'nickname', `nickname VARCHAR(255) NOT NULL DEFAULT ''`],
-  ['users', 'avatar', `avatar TEXT NOT NULL DEFAULT ''`],
+  ['users', 'avatar', `avatar VARCHAR(512) NOT NULL DEFAULT ''`],
   ['users', 'role', `role VARCHAR(50) NOT NULL DEFAULT 'user'`],
   ['posts', 'author_id', `author_id INT NULL`],
   ['posts', 'images', `images JSON NOT NULL DEFAULT ('[]')`],
@@ -108,6 +103,26 @@ const patchColumns = [
   ['comments', 'upvotes', `upvotes INT NOT NULL DEFAULT 0`],
 ];
 
+// ========== 第 3 步：建索引（MySQL 无 IF NOT EXISTS，用查表跳过已存在）==========
+const indexes = [
+  ['idx_posts_created', 'CREATE INDEX idx_posts_created ON posts(created_at)'],
+  ['idx_posts_upvotes', 'CREATE INDEX idx_posts_upvotes ON posts(upvotes)'],
+  ['idx_posts_pinned',  'CREATE INDEX idx_posts_pinned  ON posts(pinned)'],
+  ['idx_comments_post', 'CREATE INDEX idx_comments_post ON comments(post_id)'],
+  ['idx_notify_user',   'CREATE INDEX idx_notify_user   ON notifications(user_id, is_read)'],
+];
+
+async function createIndexIfMissing(name, ddl) {
+  const [rows] = await pool.query(
+    `SELECT 1 FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND INDEX_NAME = ?`,
+    [name]
+  );
+  if (rows.length) return;         // 索引已存在，跳过
+  await pool.query(ddl);
+  console.log(`→ 新建索引: ${name}`);
+}
+
 export async function initDb() {
   for (const stmt of createStatements) {
     await pool.query(stmt);
@@ -115,7 +130,10 @@ export async function initDb() {
   for (const [table, column, ddl] of patchColumns) {
     await addColumnIfMissing(table, column, ddl);
   }
-  console.log('✅ 论坛数据库初始化完成');
+  for (const [name, ddl] of indexes) {
+    await createIndexIfMissing(name, ddl);
+  }
+  console.log('✅ 论坛数据库初始化完成（MySQL）');
 }
 
 // 直接运行 `node src/db/init.js` 时执行迁移
